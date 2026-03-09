@@ -1,0 +1,12 @@
+confluent-kafka
+pymongo
+python-dotenv
+redis
+fastapi
+uvicorn
+python-multipart
+pandas
+streamlit
+plotly
+mysql-connector-python
+requests

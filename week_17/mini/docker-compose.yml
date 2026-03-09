@@ -1,0 +1,83 @@
+version: "3.8"
+
+services:
+  # MONGO
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: app
+      MONGO_INITDB_ROOT_PASSWORD: app_pw
+      MONGO_INITDB_DATABASE: social_commerce
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet -u app -p app_pw --eval 'db.runCommand({ ping: 1 }).ok' admin | grep 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # MYSQL
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pw
+      MYSQL_DATABASE: social_commerce
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app_pw
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uapp -papp_pw --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # KAFKA (single container, no Zookeeper — KRaft mode)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: unless-stopped
+    ports:
+      - "9092:9092" # host access (your local FastAPI -> localhost:9092)
+    environment:
+      # --- KRaft (no zookeeper) ---
+      # docker run --rm confluentinc/cp-kafka:7.6.1 kafka-storage random-uuid
+      # SqOr4HxnRJGTnCh7n1uYgQ
+      CLUSTER_ID: "${CLUSTER_ID}"
+
+
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # --- Listeners ---
+      # 9092 = from your HOST (localhost)
+      # 29092 = from other containers (kafka:29092)
+      # 9093 = controller internal
+      # TODO : LISTENERS 
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # --- Single-node dev defaults ---
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # TODO : WHY THERE 4 LINES 
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+volumes:
+  mongo_data:
+  mysql_data:

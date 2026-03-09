@@ -1,0 +1,261 @@
+#############################################################################################################
+##################################+---------------------------+##############################################
+##################################|     ~  IMAGES   ~         |##############################################
+##################################+---------------------------+##############################################
+#############################################################################################################
+
+services:
+# +--------------------+
+# |       MONGO        |
+# +--------------------+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017" # TODO change if port 27017 is already used
+    volumes:
+      - mongo_data:/data/db
+    command: mongod --noauth
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    networks:
+      - app-network
+
+# +--------------------+
+# |   MONGO UI (WEB)   |
+# +--------------------+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    ports:
+      - "18081:8081" # TODO change if port 8081 is already used
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ENABLE_LOGIN: "false"
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+# +--------------------+
+# |       KAFKA        |
+# +--------------------+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: unless-stopped
+    ports:
+      - "9092:9092" # TODO change if port 9092 is already used
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # listeners
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092" # TODO if you change host port 9092, update this
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # single node dev defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - app-network
+
+# +--------------------+
+# |      KAFKA UI      |
+# +--------------------+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    ports:
+      - "18080:8080" # TODO change if port 8080 is already used
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+
+
+# +--------------------+
+# |   Elasticsearch    |
+# +--------------------+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    networks:
+      - app-network
+
+# +--------------------+
+# |   Kibana           |
+# +--------------------+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - app-network
+
+# +--------------------+
+# | STREAMLIT DASHBOARD|
+# +--------------------+
+  streamlit_dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"    
+      ELASTICSEARCH_INDEX: "images"
+    depends_on:
+      - mongo
+      - elasticsearch                                    
+    networks:
+      - app-network
+
+#############################################################################################################
+##################################+---------------------------+##############################################
+##################################|     ~   CODE   ~          |##############################################
+##################################+---------------------------+##############################################
+#############################################################################################################
+
+# +------------------------+
+# | cleaning_consumer py   |
+# +------------------------+
+  cleaning_consumer:
+    build:
+      context: .
+      dockerfile: cleaning_consumer/Dockerfile
+    # so it only loads once
+    # restart: "no"
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC_RAW: "raw"
+      KAFKA_TOPIC_CLEAN: "clean"
+      KAFKA_GROUP_CLEAN: "cleaning_group"
+    networks:
+      - app-network
+
+# +--------------------------+
+# | elastic_consumer PY      |
+# +--------------------------+
+  elastic_consumer:
+    build:
+      context: .
+      dockerfile: elastic_consumer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - kafka
+      - elasticsearch
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC_RAW: "raw"
+      KAFKA_TOPIC_CLEAN: "clean"
+      KAFKA_TOPIC_ANALYTIC: "analytic"
+      KAFKA_GROUP_INDEXER: "Indexer"
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"   
+      ELASTICSEARCH_INDEX: "images"                    
+
+    networks:
+      - app-network
+# +--------------------+
+# |  analytics PY      |
+# +--------------------+
+  analytics:
+    build:
+      context: .
+      dockerfile: analytics/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC_CLEAN: "clean"
+      KAFKA_TOPIC_ANALYTIC: "analytic"
+      KAFKA_GROUP_ANALYTIC: "analytic_group"
+
+    networks:
+      - app-network
+    
+# +--------------------+
+# |  ingestion_service |
+# +--------------------+
+
+  ingestion_service:
+    build:
+      context: .
+      dockerfile: ingestion_service_api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+      - gridfs_service
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC_RAW: "raw"
+      GRIDFS_SERVICE_URL: "http://gridfs_service:8001"
+      IMAGE_DIRECTORY: "/app/images"                                
+
+    networks:
+      - app-network
+
+# +--------------------+
+# |  GridFS_service    |
+# +--------------------+
+  gridfs_service:
+    build:
+      context: .
+      dockerfile: GridFS_service_api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URI: "mongodb://mongo:27017/"               
+      MONGO_DB: ${MONGO_DB}  
+    networks:
+      - app-network
+
+#############################################################################################################
+##################################+---------------------------+##############################################
+##################################|     ~  DEPS     ~         |##############################################
+##################################+---------------------------+##############################################
+#############################################################################################################
+
+
+volumes:
+  mongo_data:
+  esdata:
+
+networks:
+  app-network:
+    driver: bridge

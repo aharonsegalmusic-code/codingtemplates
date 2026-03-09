@@ -1,0 +1,24 @@
+from confluent_kafka import Producer
+import json
+import os
+from typing import Callable
+from dotenv import dotenv_values
+
+
+ENV = {**dotenv_values(".env.local"), **os.environ}
+
+KAFKA_BOOTSTRAP_SERVERS = ENV.get("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092")
+TOPIC_ORDERS = ENV.get("TOPIC_ORDERS", "pizza_orders")
+
+
+class KafkaProducerClient:
+    def __init__(self, bootstrap_servers: str):
+        self.producer = Producer({"bootstrap.servers": bootstrap_servers})
+
+    def send(self, topic: str, value: bytes):
+        self.producer.produce(topic=topic, value=value)
+
+    def flush(self):
+        self.producer.flush()
+
+producer = KafkaProducerClient(KAFKA_BOOTSTRAP_SERVERS)

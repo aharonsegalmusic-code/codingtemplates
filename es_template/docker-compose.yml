@@ -1,0 +1,97 @@
+# docker-compose.yml
+# ─────────────────────────────────────────────────────────────
+# Three services:
+#   elasticsearch  → the search engine
+#   kibana         → the web UI to visualise ES data
+#   fastapi        → our Python API
+#
+# Docker Compose networking:
+#   All services share a virtual network called `esnet`.
+#   Services reach each other by SERVICE NAME as hostname.
+#   e.g. fastapi talks to elasticsearch at http://elasticsearch:9200
+# ─────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── 1. Elasticsearch ────────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: elasticsearch
+    environment:
+      # Single-node mode — no cluster formation needed for dev.
+      - discovery.type=single-node
+
+      # Disable SSL/TLS and authentication for local development.
+      # NEVER do this in production.
+      - xpack.security.enabled=false
+
+      # Heap size — give ES 512MB min/max.
+      # Format: -Xms<min> -Xmx<max>
+      # Keep min == max to avoid GC pauses from heap resizing.
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"   # REST API
+      - "9300:9300"   # inter-node transport (unused in single-node, but exposed for completeness)
+    volumes:
+      # Named volume: data survives container restarts.
+      # Without this, every `docker compose down` loses all indexed data.
+      - esdata:/usr/share/elasticsearch/data
+    networks:
+      - esnet
+    healthcheck:
+      # Docker will mark this container as "healthy" once ES responds.
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── 2. Kibana ────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: kibana
+    environment:
+      # Tell Kibana where ES lives — use the Docker service name.
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"   # Open http://localhost:5601 in your browser
+    depends_on:
+      elasticsearch:
+        condition: service_healthy   # wait until ES is healthy
+    networks:
+      - esnet
+
+  # ── 3. FastAPI ───────────────────────────────────────────────
+  fastapi:
+    build:
+      context: .           # build from the Dockerfile in this directory
+      dockerfile: Dockerfile
+    container_name: fastapi
+    environment:
+      # These override the .env defaults when running in Docker.
+      # The hostname "elasticsearch" resolves to the ES container
+      # because both are on the same Docker network (esnet).
+      - ES_HOST=http://elasticsearch:9200
+      - ES_INDEX=pizza_orders
+      - DATA_FILE=/app/data/pizza_orders.json
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+    ports:
+      - "8000:8000"   # Open http://localhost:8000/docs for Swagger UI
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - esnet
+
+# ── Named volumes ────────────────────────────────────────────
+# Volumes declared here persist across `docker compose down`.
+# To wipe all data: `docker compose down -v`
+volumes:
+  esdata:
+
+# ── Networks ─────────────────────────────────────────────────
+networks:
+  esnet:
+    driver: bridge

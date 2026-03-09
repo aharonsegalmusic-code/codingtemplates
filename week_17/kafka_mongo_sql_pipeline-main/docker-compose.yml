@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # MONGO
+  mongo:
+    image: mongo:7         # Use an existing image from Docker Hub
+    container_name: sc_mongo  # Optional: name your container
+    restart: unless-stopped       # Restart policy: always, unless-stopped, on-failure
+    ports:
+      - "27017:27017"             # Map host port 8080 → container port 80
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: app
+      MONGO_INITDB_ROOT_PASSWORD: app_pw
+      MONGO_INITDB_DATABASE: social_commerce
+
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u app -p app_pw --eval 'db.runCommand({ ping: 1 }).ok' admin | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Backend API service
+  mysql:
+    image: mysql:8.0
+    container_name: sc_mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pw
+      MYSQL_DATABASE: social_commerce
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app_pw
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uapp -papp_pw --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mongo_data:
+  mysql_data:

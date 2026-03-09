@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  fastapi:
+    build: .
+    env_file:
+      - ./.env.compose
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo_container
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:

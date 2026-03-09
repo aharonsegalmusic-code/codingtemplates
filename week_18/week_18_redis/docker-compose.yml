@@ -1,0 +1,60 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    # so it only loads once
+    restart: "no"
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
+  consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - mongo
+    networks:
+      - app-network
+
+  analytics-api:
+    build:
+      context: .
+      dockerfile: analytics-api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - mongo
+    networks:
+      - app-network
+
+volumes:
+  mongo_data:
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,0 +1,296 @@
+services:
+# +--------------------+
+# |       MONGO        |
+# +--------------------+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    command: mongod --noauth
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    networks:
+      - app-network
+
+# +--------------------+
+# |   MONGO UI (WEB)   |
+# +--------------------+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    ports:
+      - "18081:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ENABLE_LOGIN: "false"
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+# +--------------------+
+# |       MYSQL        |
+# +--------------------+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app-network
+
+# +--------------------+
+# |   SQL UI (WEB)     |
+# +--------------------+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    restart: unless-stopped
+    ports:
+      - "8978:8978"
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    depends_on:
+      - mysql
+    networks:
+      - app-network
+
+# +--------------------+
+# |       KAFKA        |
+# +--------------------+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # listeners
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # single node dev defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - app-network
+
+# +--------------------+
+# |      KAFKA UI      |
+# +--------------------+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    ports:
+      - "18080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+
+# +--------------------+
+# |       REDIS        |
+# +--------------------+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+# +--------------------+
+# |     REDIS UI       |
+# +--------------------+
+  redisinsight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
+# ====================================
+# |     APPLICATION SERVICES         |
+# ====================================
+
+# +--------------------+
+# |        API         |
+# +--------------------+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TOPIC_ORDERS: ${TOPIC_ORDERS}
+      TOPIC_CLEAN_INST: ${TOPIC_CLEAN_INST}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    depends_on:
+      - mongo
+      - redis
+      - kafka
+      - mysql
+    networks:
+      - app-network
+
+# +--------------------+
+# |   TEXT PROCESSOR   |
+# +--------------------+
+  text_worker:
+    build:
+      context: .
+      dockerfile: text_processor/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TOPIC_ORDERS: ${TOPIC_ORDERS}
+      TOPIC_CLEAN_INST: ${TOPIC_CLEAN_INST}
+      KAFKA_GROUP_ID_TEXT: ${KAFKA_GROUP_ID_TEXT}
+    depends_on:
+      - mongo
+      - kafka
+    networks:
+      - app-network
+
+# +--------------------+
+# |  KITCHEN WORKER    |
+# +--------------------+
+  kitchen_worker:
+    build:
+      context: .
+      dockerfile: kitchen/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TOPIC_ORDERS: ${TOPIC_ORDERS}
+      KAFKA_GROUP_ID_KITCHEN: ${KAFKA_GROUP_ID_KITCHEN}
+    depends_on:
+      - mongo
+      - redis
+      - kafka
+    networks:
+      - app-network
+
+# +--------------------+
+# |     ENRICHER       |
+# +--------------------+
+  enricher:
+    build:
+      context: .
+      dockerfile: enricher/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TOPIC_CLEAN_INST: ${TOPIC_CLEAN_INST}
+      KAFKA_GROUP_ID_ENRICHER: ${KAFKA_GROUP_ID_ENRICHER}
+    depends_on:
+      - mongo
+      - redis
+      - kafka
+    networks:
+      - app-network
+
+# +--------------------+
+# |  RISK EVALUATOR    |
+# +--------------------+
+  risk_evaluator:
+    build:
+      context: .
+      dockerfile: risk_evaluator/Dockerfile
+    restart: unless-stopped
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - app-network
+
+# +--------------------+
+# | STREAMLIT DASHBOARD|
+# +--------------------+
+  streamlit_dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/
+      MONGO_DB: ${MONGO_DB}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - app-network
+
+volumes:
+  mongo_data:
+  mysql_data:
+  redis_data:
+  cloudbeaver_data:
+
+networks:
+  app-network:
+    driver: bridge

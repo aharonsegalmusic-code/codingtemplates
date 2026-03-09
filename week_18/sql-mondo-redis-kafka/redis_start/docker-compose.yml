@@ -1,0 +1,147 @@
+services:
+# +--------------------+
+# |       MONGO        |
+# +--------------------+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017" # TODO change if port 27017 is already used
+    volumes:
+      - mongo_data:/data/db
+    command: mongod --noauth
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    networks:
+      - app-network
+
+# +--------------------+
+# |   MONGO UI (WEB)   |
+# +--------------------+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    ports:
+      - "18081:8081" # TODO change if port 8081 is already used
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_MONGODB_ENABLE_LOGIN: "false"
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+
+# +--------------------+
+# |       MYSQL        |
+# +--------------------+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    ports:
+      - "3306:3306" # TODO change if port 3306 is already used
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro # NOTE: creates a mysql_native_password user so CloudBeaver/DBeaver won't hit "Public Key Retrieval is not allowed"
+    networks:
+      - app-network
+
+# +--------------------+
+# |   SQL UI (WEB)     |
+# +--------------------+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    restart: unless-stopped
+    ports:
+      - "8978:8978" # TODO change if port 8978 is already used
+    volumes:
+      - cloudbeaver_data:/opt/cloudbeaver/workspace
+    depends_on:
+      - mysql
+    networks:
+      - app-network
+
+# +--------------------+
+# |       KAFKA        |
+# +--------------------+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    restart: unless-stopped
+    ports:
+      - "9092:9092" # TODO change if port 9092 is already used
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      # listeners
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092" # TODO if you change host port 9092, update this
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      # single node dev defaults
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - app-network
+
+# +--------------------+
+# |      KAFKA UI      |
+# +--------------------+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    restart: unless-stopped
+    ports:
+      - "18080:8080" # TODO change if port 8080 is already used
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+
+# +--------------------+
+# |       REDIS        |
+# +--------------------+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379" # TODO change if port 6379 is already used
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+# +--------------------+
+# |     REDIS UI       |
+# +--------------------+
+  redisinsight:
+    image: redis/redisinsight:latest
+    restart: unless-stopped
+    ports:
+      - "5540:5540" # TODO change if port 5540 is already used
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
+volumes:
+  mongo_data:
+  mysql_data:
+  redis_data:
+  cloudbeaver_data:
+
+networks:
+  app-network:
+    driver: bridge

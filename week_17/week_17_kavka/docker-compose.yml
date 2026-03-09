@@ -1,0 +1,185 @@
+services:
+# +--------------------+
+# |       MONGO        |
+# +--------------------+
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' localhost:27017 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks:
+      - app-network
+
+# +--------------------+
+# |       MYSQL        |
+# +--------------------+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: suspicious
+      MYSQL_ROOT_PASSWORD: root_pwd
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -proot_pwd --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - app-network
+
+# +--------------------+
+# |       KAFKA        |
+# +--------------------+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092" # host access: localhost:9092
+    environment:
+      CLUSTER_ID: "Mf_-9PUJQnCI6eQZzgFTlg"
+
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      - app-network
+
+
+# +--------------------+
+# |   KAFKA CONSOLE    |
+# +--------------------+
+  kafka-ui:
+    image: redpandadata/console:latest
+    container_name: kafka-ui
+    restart: unless-stopped
+    ports:
+      - "8001:8080" 
+    environment:
+      KAFKA_BROKERS: "kafka:29092"
+    depends_on:
+      - kafka
+    networks:
+      - app-network
+
+
+# +--------------------+
+# |    PRODUCER        |
+# +--------------------+
+  producer:
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
+    container_name: producer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC: "raw-records"
+
+      # IMPORTANT: service name is "mongo" (not "mongodb")
+      # If you enabled auth (root user), keep this full URI:
+      MONGO_URI: "mongodb://app:app_pw@mongo:27017/suspicious?authSource=admin"
+      MONGO_DB: "suspicious"
+      MONGO_COLLECTION: "records"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - app-network
+
+# +--------------------+
+# |     CONSUMER       |
+# +--------------------+
+  consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+    container_name: consumer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC: "raw-records"
+      KAFKA_GROUP_ID: "mysql-loader"
+
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      MYSQL_DATABASE: "suspicious"
+      MYSQL_USER: "root"
+
+      # Your python reads MYSQL_PASSWORD, so set it explicitly:
+      MYSQL_PASSWORD: "root_pwd"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - app-network
+
+# +--------------------+
+# |    ANALYTICS API   |
+# +--------------------+
+  analytics-api:
+    build:
+      context: ./analytics-api
+      dockerfile: Dockerfile
+    container_name: analytics-api
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      DB_HOST: "mysql"
+      DB_PORT: "3306"
+      MYSQL_DATABASE: "suspicious"
+      MYSQL_USER: "root"
+      MYSQL_PASSWORD: "root_pwd"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  mongo_data:
+  mysql_data:
+
+networks:
+  app-network:
+    driver: bridge
