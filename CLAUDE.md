@@ -3,7 +3,7 @@
 **Source:** project_1
 **Received:** 2026-03-10T14:33:44.965806+00:00
 **Mode:** NEW PROJECT
-**Working directory:** C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_163408
+**Working directory:** C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_221825
 
 ---
 
@@ -23,7 +23,7 @@ You are running in FULLY AUTONOMOUS headless mode. These rules are absolute:
 5. **All code must be complete and functional.** No TODOs, no placeholders, no "implement this later".
 6. **Include a `README.md`** with clear setup and run instructions.
 7. **Include dependency files** (requirements.txt, package.json, etc.) as appropriate.
-8. **Work entirely inside the current working directory** (C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_163408). Do not write files outside of it.
+8. **Work entirely inside the current working directory** (C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_221825). Do not write files outside of it.
 
 ---
 
@@ -31,7 +31,7 @@ You are running in FULLY AUTONOMOUS headless mode. These rules are absolute:
 
 Generate ALL code inside this directory:
 ```
-C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_163408\9.template_max\projects\project_1
+C:\Users\a0527\claude-pipeline-work\codingtemplates\20260310_221825\9.template_max\projects\project_1
 ```
 Create it if it doesn't exist. Do NOT generate files in the repo root or anywhere else.
 
