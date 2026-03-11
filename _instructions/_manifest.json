@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-03-11T09:15:11.873646+00:00",
+  "source_folder": "test_project",
+  "project_name": "test_project",
+  "mode": "communicate",
+  "file_count": 2,
+  "files": [
+    {
+      "path": "FLOW.md",
+      "category": "instructions",
+      "size_bytes": 1511
+    },
+    {
+      "path": "instructions.md",
+      "category": "instructions",
+      "size_bytes": 194
+    }
+  ]
+}
