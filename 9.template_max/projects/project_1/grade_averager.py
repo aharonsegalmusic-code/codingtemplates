@@ -94,12 +94,22 @@ def print_report(student_list):
         print(f"Top student: {top_student_name} ({top_average})")
 
 
-# locate students.json in the same folder as this script
-script_directory = os.path.dirname(os.path.abspath(__file__))
-students_file_path = os.path.join(script_directory, "students.json")
+def main():
+    """
+    orchestrates the full script — locates the data file, loads it, and prints the report
+    receives: nothing
+    returns: nothing
+    """
+    # locate students.json in the same folder as this script
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    students_file_path = os.path.join(script_directory, "students.json")
 
-# load the student data from the json file
-student_list = load_students(students_file_path)
+    # load the student data from the json file
+    student_list = load_students(students_file_path)
 
-# print the full grade report
-print_report(student_list)
+    # print the full grade report
+    print_report(student_list)
+
+
+if __name__ == "__main__":
+    main()

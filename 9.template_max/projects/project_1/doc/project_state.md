@@ -9,8 +9,8 @@ updated after every task completion.
 
 | field | value |
 |-------|-------|
-| last updated | 2026-03-10 |
-| total tasks completed | 2 |
+| last updated | 2026-03-11 |
+| total tasks completed | 3 |
 | total files | 7 |
 | project name | student grade averager |
 
@@ -22,6 +22,7 @@ updated after every task completion.
 |---|------|-----------|--------|
 | 1 | 2026-03-10 | build student grade averager script | completed |
 | 2 | 2026-03-10 | add docstrings and comments to grade_averager.py | completed |
+| 3 | 2026-03-11 | add if __name__ == "__main__" section and main() orchestrator | completed |
 
 ---
 
@@ -97,12 +98,15 @@ project_1/
 
 this project is a simple standalone python script that reads student grade data from a local json file and prints a formatted summary to the terminal.
 
-the script has four functions:
+the script has five functions:
 - `load_students()` — opens and parses students.json
 - `calculate_average()` — computes the mean of a grades dict, returns none if empty
 - `format_student_line()` — formats one output line per student
 - `print_report()` — loops through all students, prints individual lines, then prints class average and top student
+- `main()` — orchestrates the full script: locates the data file, loads it, and calls print_report()
 
 the data flows from students.json through the python functions and out to the terminal. no external services, no network calls, no pip dependencies.
 
 task 2 (fix.md) added docstrings to every function and visible comments above logical sections of the main script, without changing any logic.
+
+task 3 (fix.md) added a `main()` function that wraps the top-level script logic, and an `if __name__ == "__main__": main()` guard at the bottom. the script can now also be imported as a module without running automatically.
