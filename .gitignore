@@ -1,7 +1,0 @@
-
-# Pipeline temp files
-CLAUDE.md
-_run_claude.sh
-_session_state.txt
-_claude_exit.txt
-.pipeline_initialized
